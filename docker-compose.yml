@@ -1,0 +1,29 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: railway_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - railway-postgres:/var/lib/postgresql/data
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+  app:
+    build: .
+    depends_on:
+      - postgres
+      - redis
+    environment:
+      DB_URL: jdbc:postgresql://postgres:5432/railway_db
+      DB_USERNAME: postgres
+      DB_PASSWORD: postgres
+      JWT_SECRET: change-this-secret-to-a-256-bit-production-secret
+    ports:
+      - "8080:8080"
+volumes:
+  railway-postgres:
