@@ -16,6 +16,8 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Duration;
 import java.time.LocalTime;
 import java.util.ArrayList;
@@ -41,12 +43,14 @@ public class PanIndiaMasterDataSeeder implements CommandLineRunner {
     private final com.railway.InRailway.repository.RouteStationRepository routeStations;
     private final boolean enabled;
     private final boolean schedulesEnabled;
+    private final Path dataDirectory;
     private final HttpClient client = HttpClient.newHttpClient();
 
     public PanIndiaMasterDataSeeder(ObjectMapper mapper, StationRepository stations, TrainRepository trains,
                                     RouteRepository routes, com.railway.InRailway.repository.RouteStationRepository routeStations,
                                     @Value("${app.seed.pan-india.enabled:false}") boolean enabled,
-                                    @Value("${app.seed.pan-india.schedules:false}") boolean schedulesEnabled) {
+                                    @Value("${app.seed.pan-india.schedules:false}") boolean schedulesEnabled,
+                                    @Value("${app.seed.pan-india.data-dir:}") String dataDirectory) {
         this.mapper = mapper;
         this.stations = stations;
         this.trains = trains;
@@ -54,6 +58,7 @@ public class PanIndiaMasterDataSeeder implements CommandLineRunner {
         this.routeStations = routeStations;
         this.enabled = enabled;
         this.schedulesEnabled = schedulesEnabled;
+        this.dataDirectory = dataDirectory == null || dataDirectory.isBlank() ? null : Path.of(dataDirectory);
     }
 
     @Override
@@ -74,7 +79,7 @@ public class PanIndiaMasterDataSeeder implements CommandLineRunner {
     @Transactional
     int importStations() throws IOException, InterruptedException {
         int imported = 0;
-        for (JsonNode feature : download(STATIONS_URL).path("features")) {
+        for (JsonNode feature : dataset(STATIONS_URL, "stations.json").path("features")) {
             JsonNode properties = feature.path("properties");
             String code = text(properties, "code");
             String name = text(properties, "name");
@@ -102,7 +107,7 @@ public class PanIndiaMasterDataSeeder implements CommandLineRunner {
     @Transactional
     int importTrains() throws IOException, InterruptedException {
         int imported = 0;
-        for (JsonNode feature : download(TRAINS_URL).path("features")) {
+        for (JsonNode feature : dataset(TRAINS_URL, "trains.json").path("features")) {
             JsonNode properties = feature.path("properties");
             String number = firstText(properties, "number", "train_number");
             String name = firstText(properties, "name", "train_name");
@@ -184,8 +189,16 @@ public class PanIndiaMasterDataSeeder implements CommandLineRunner {
         return mapper.readTree(response.body());
     }
 
+    private JsonNode dataset(String url, String fileName) throws IOException, InterruptedException {
+        if (dataDirectory != null) {
+            Path localFile = dataDirectory.resolve(fileName);
+            if (Files.isRegularFile(localFile)) return mapper.readTree(localFile.toFile());
+        }
+        return download(url);
+    }
+
     private ArrayList<JsonNode> schedules() throws IOException, InterruptedException {
-        JsonNode root = download(SCHEDULES_URL);
+        JsonNode root = dataset(SCHEDULES_URL, "schedules.json");
         ArrayList<JsonNode> schedules = new ArrayList<>();
         if (root.isArray()) root.forEach(schedules::add);
         else root.path("features").forEach(feature -> schedules.add(feature.path("properties")));
